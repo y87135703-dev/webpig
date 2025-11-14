@@ -222,7 +222,7 @@
   eyeImg.src = 'image.png'; // place image.png in the repo or public folder
   // optional: enable crossOrigin if you host remote image and need to avoid tainting canvas
   // eyeImg.crossOrigin = 'anonymous';
-  let eyeSize = 28; // rendered pixel size of icon
+  let eyeSize = 50; // rendered pixel size of icon (increased per request)
 
   function draw(){
     fitCanvas();
@@ -364,6 +364,9 @@
         const mid = { x: (mirrorA.x + mirrorB.x)/2, y: (mirrorA.y + mirrorB.y)/2 };
         angleTo = Math.atan2(mid.y - Eye.y, mid.x - Eye.x);
       }
+      // Fix: image was facing the opposite direction — add PI to flip orientation
+      angleTo += Math.PI;
+
       ctx.save();
       ctx.translate(Eye.x, Eye.y);
       ctx.rotate(angleTo);
