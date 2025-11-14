@@ -10,7 +10,7 @@
   }
   html,body{height:100%;margin:0;font-family:Inter,system-ui,Segoe UI,Roboto,Arial}
   body{display:flex;align-items:center;justify-content:center;background:linear-gradient(180deg,#e6eefc 0%,#f8fafc 100%);padding:18px;color:#0b1220}
-  .app{width:100%;max-width:1100px;background:var(--card);border-radius:12px;padding:14px;box-shadow:0 10px 40px rgba(12,18,31,0.06)}
+  .app{Width:100%;max-width:1100px;background:var(--card);border-radius:12px;padding:14px;box-shadow:0 10px 40px rgba(12,18,31,0.06)}
   header{display:flex;align-items:center;gap:12px;margin-bottom:8px}
   h1{font-size:18px;margin:0}
   .main{display:flex;gap:12px}
@@ -217,10 +217,11 @@
   let animT = 0, animateEnabled = false;
   animateLight.addEventListener('change', () => { animateEnabled = animateLight.checked; if (!animateEnabled) animT = 0; });
 
-  // Eye image: inline SVG as data URL (keeps repo simple, no external asset)
-  const eyeSvg = `<svg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 64 64'><path d='M2 32C10 12 54 12 62 32C54 52 10 52 2 32Z' fill='%23ffffff00' stroke='%230e2938' stroke-width='2' stroke-linejoin='round'/><circle cx='32' cy='32' r='11' fill='%232563eb' /><circle cx='32' cy='32' r='5' fill='%23000' opacity='0.95'/></svg>`;
+  // Eye image: use external image file image.png and auto-rotate the image so the eye looks toward the hit point (P)
   const eyeImg = new Image();
-  eyeImg.src = 'data:image/svg+xml;utf8,' + encodeURIComponent(eyeSvg);
+  eyeImg.src = 'image.png'; // place image.png in the repo or public folder
+  // optional: enable crossOrigin if you host remote image and need to avoid tainting canvas
+  // eyeImg.crossOrigin = 'anonymous';
   let eyeSize = 28; // rendered pixel size of icon
 
   function draw(){
@@ -351,10 +352,23 @@
     ctx.beginPath(); ctx.fillStyle='#f97316'; ctx.strokeStyle='#00000022'; ctx.lineWidth=1.2; ctx.arc(O.x,O.y,10,0,Math.PI*2); ctx.fill(); ctx.stroke();
     ctx.fillStyle='#000'; ctx.font='13px Inter, Arial'; ctx.fillText('O', O.x+14, O.y+5);
 
-    // draw Eye as image icon (fallback to blue circle while image not ready)
+    // draw Eye as image icon (rotate so the eye looks toward the mirror hit point when available)
     if (eyeImg && eyeImg.complete) {
       const iw = eyeSize, ih = eyeSize;
-      ctx.drawImage(eyeImg, Eye.x - iw/2, Eye.y - ih/2, iw, ih);
+      // determine orientation: prefer hit point P when available, else face toward mirror center
+      let angleTo = 0;
+      if (res && res.P) {
+        angleTo = Math.atan2(res.P.y - Eye.y, res.P.x - Eye.x);
+      } else {
+        // fallback: look toward mirror center
+        const mid = { x: (mirrorA.x + mirrorB.x)/2, y: (mirrorA.y + mirrorB.y)/2 };
+        angleTo = Math.atan2(mid.y - Eye.y, mid.x - Eye.x);
+      }
+      ctx.save();
+      ctx.translate(Eye.x, Eye.y);
+      ctx.rotate(angleTo);
+      ctx.drawImage(eyeImg, -iw/2, -ih/2, iw, ih);
+      ctx.restore();
       // subtle stroke for clarity
       ctx.beginPath(); ctx.strokeStyle = '#00000022'; ctx.lineWidth = 1; ctx.ellipse(Eye.x, Eye.y, iw/2, ih/2, 0, 0, Math.PI*2); ctx.stroke();
     } else {
