@@ -217,6 +217,12 @@
   let animT = 0, animateEnabled = false;
   animateLight.addEventListener('change', () => { animateEnabled = animateLight.checked; if (!animateEnabled) animT = 0; });
 
+  // Eye image: inline SVG as data URL (keeps repo simple, no external asset)
+  const eyeSvg = `<svg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 64 64'><path d='M2 32C10 12 54 12 62 32C54 52 10 52 2 32Z' fill='%23ffffff00' stroke='%230e2938' stroke-width='2' stroke-linejoin='round'/><circle cx='32' cy='32' r='11' fill='%232563eb' /><circle cx='32' cy='32' r='5' fill='%23000' opacity='0.95'/></svg>`;
+  const eyeImg = new Image();
+  eyeImg.src = 'data:image/svg+xml;utf8,' + encodeURIComponent(eyeSvg);
+  let eyeSize = 28; // rendered pixel size of icon
+
   function draw(){
     fitCanvas();
     const W = canvas.clientWidth, H = canvas.clientHeight;
@@ -341,12 +347,20 @@
       oiDistEl.textContent = '—';
     }
 
-    // draw O and Eye
+    // draw O
     ctx.beginPath(); ctx.fillStyle='#f97316'; ctx.strokeStyle='#00000022'; ctx.lineWidth=1.2; ctx.arc(O.x,O.y,10,0,Math.PI*2); ctx.fill(); ctx.stroke();
     ctx.fillStyle='#000'; ctx.font='13px Inter, Arial'; ctx.fillText('O', O.x+14, O.y+5);
 
-    ctx.beginPath(); ctx.fillStyle='#2563eb'; ctx.strokeStyle='#00000022'; ctx.arc(Eye.x,Eye.y,10,0,Math.PI*2); ctx.fill(); ctx.stroke();
-    ctx.fillStyle='#000'; ctx.font='13px Inter, Arial'; ctx.fillText('Eye', Eye.x+14, Eye.y+5);
+    // draw Eye as image icon (fallback to blue circle while image not ready)
+    if (eyeImg && eyeImg.complete) {
+      const iw = eyeSize, ih = eyeSize;
+      ctx.drawImage(eyeImg, Eye.x - iw/2, Eye.y - ih/2, iw, ih);
+      // subtle stroke for clarity
+      ctx.beginPath(); ctx.strokeStyle = '#00000022'; ctx.lineWidth = 1; ctx.ellipse(Eye.x, Eye.y, iw/2, ih/2, 0, 0, Math.PI*2); ctx.stroke();
+    } else {
+      ctx.beginPath(); ctx.fillStyle='#2563eb'; ctx.strokeStyle='#00000022'; ctx.arc(Eye.x,Eye.y,10,0,Math.PI*2); ctx.fill(); ctx.stroke();
+      ctx.fillStyle='#000'; ctx.font='13px Inter, Arial'; ctx.fillText('Eye', Eye.x+14, Eye.y+5);
+    }
   }
 
   // pointer dragging (only O and Eye)
@@ -361,8 +375,10 @@
   let dragging = null, dragId = null;
   canvas.addEventListener('pointerdown', (e) => {
     const p = getPos(e);
+    // adapt hit radius to eye icon size
+    const eyeRadius = Math.max(12, eyeSize/2);
     if (hitTest(p, O, 14)){ dragging = 'O'; dragId = e.pointerId; canvas.setPointerCapture(dragId); return; }
-    if (hitTest(p, Eye, 14)){ dragging = 'Eye'; dragId = e.pointerId; canvas.setPointerCapture(dragId); return; }
+    if (hitTest(p, Eye, eyeRadius)){ dragging = 'Eye'; dragId = e.pointerId; canvas.setPointerCapture(dragId); return; }
     dragging = null;
   });
 
@@ -396,6 +412,9 @@
     if (e.key === 'ArrowRight'){ O.x += step; Eye.x += step; draw(); }
     if (e.key === 'r'){ reset(); draw(); }
   });
+
+  // redraw once image loads
+  eyeImg.onload = () => { draw(); };
 
   // initial render
   draw();
