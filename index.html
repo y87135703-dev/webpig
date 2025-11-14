@@ -165,12 +165,15 @@
     return refl;
   }
 
+  // return intersection point and parameters (u along r, v along s)
   function lineIntersect(P, r, Q, s){
     const rxs = r.x*s.y - r.y*s.x;
     if (Math.abs(rxs) < 1e-7) return null;
     const qp = { x: Q.x - P.x, y: Q.y - P.y };
-    const u = (qp.x*s.y - qp.y*s.x) / rxs;
-    return add(P, mul(r, u));
+    const u = (qp.x*s.y - qp.y*s.x) / rxs; // parameter for P + u*r
+    const v = (qp.x*r.y - qp.y*r.x) / rxs; // parameter for Q + v*s
+    const pt = add(P, mul(r, u));
+    return { pt, u, v };
   }
 
   function reflectVector(v, n){
@@ -191,8 +194,12 @@
     const Eref = reflectPointAcrossLine(Eye, A, B);
     const r = sub(Eref, O);
     const s = sub(B, A);
-    const P = lineIntersect(O, r, A, s);
-    if (!P) return null;
+    const inter = lineIntersect(O, r, A, s);
+    if (!inter) return null;
+    // require intersection to lie on mirror segment and in front of the object ray
+    if (inter.v < 0 || inter.v > 1) return null; // intersection off the finite mirror
+    if (inter.u < 0) return null; // intersection lies behind the object along ray direction
+    const P = inter.pt;
     const v_in = sub(P, O);
     const v_out = sub(Eye, P);
     const mirrorDir = norm(sub(B,A));
