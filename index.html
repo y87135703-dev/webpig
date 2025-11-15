@@ -331,17 +331,37 @@
         ctx.fillText(`${res.outDeg}°`, P.x + Math.cos((normalAngle+reflectedAngle)/2)*(arcR+10), P.y + Math.sin((normalAngle+reflectedAngle)/2)*(arcR+10));
       }
 
-      // virtual image
+      // virtual image and dotted O -> O' line + distance label
       if (res.Oimage) {
+        // draw virtual image marker
         ctx.fillStyle = 'rgba(16,185,129,0.95)';
         ctx.fillRect(res.Oimage.x-5, res.Oimage.y-5, 10, 10);
         ctx.font = '12px Inter, Arial'; ctx.fillStyle = '#065f46'; ctx.fillText("O'", res.Oimage.x + 8, res.Oimage.y + 4);
+
+        // dashed line from O to O' (virtual image)
+        ctx.save();
+        ctx.setLineDash([6,4]);
+        ctx.strokeStyle = 'rgba(16,185,129,0.9)';
+        ctx.lineWidth = 2;
+        ctx.beginPath();
+        ctx.moveTo(O.x, O.y);
+        ctx.lineTo(res.Oimage.x, res.Oimage.y);
+        ctx.stroke();
+        ctx.restore();
+
+        // midpoint marker and distance label
+        const midOI = { x: (O.x + res.Oimage.x)/2, y: (O.y + res.Oimage.y)/2 };
+        const distOI = len(sub(res.Oimage, O));
+        ctx.beginPath(); ctx.fillStyle = 'rgba(6,95,70,0.95)'; ctx.arc(midOI.x, midOI.y, 4, 0, Math.PI*2); ctx.fill();
+        ctx.font = '12px Inter, Arial'; ctx.fillStyle = '#065f46';
+        ctx.fillText(`${distOI.toFixed(1)} px`, midOI.x + 8, midOI.y - 8);
       }
 
       // readouts
+      const distOI_read = res.Oimage ? len(sub(res.Oimage, O)) : null;
       incRefEl.textContent = `${res.inDeg}° / ${res.outDeg}°`;
       hitPointEl.textContent = `${Math.round(P.x)}, ${Math.round(P.y)}`;
-      oiDistEl.textContent = `${res.dO.toFixed(1)} px (perp)`;
+      oiDistEl.textContent = distOI_read ? `${res.dO.toFixed(1)} px (perp) / ${distOI_read.toFixed(1)} px (O→O')` : `${res.dO.toFixed(1)} px (perp)`;
     } else {
       incRefEl.textContent = '— / —';
       hitPointEl.textContent = '—';
