@@ -32,6 +32,7 @@
   .readout{background:#fbfdff;border-radius:8px;padding:8px;border:1px solid #eef2ff;font-size:13px}
   .toggle{display:flex;gap:6px;align-items:center}
   .muted{color:var(--muted)}
+  .question{margin-top:10px;font-weight:600;color:#0b1220}
   .footer{margin-top:10px;font-size:13px;color:var(--muted)}
   @media (max-width:980px){ .main{flex-direction:column} .panel{width:100%} canvas{height:420px} }
 </style>
@@ -83,6 +84,8 @@
             <div class="readout">O to image dist: <strong id="oiDist">—</strong></div>
           </div>
 
+          <div class="question" id="fillBlank">object distance = image distance = ___ cm.</div>
+
         </div>
         <div class="footer">Tip: double-click canvas to reset. Snap toggles 10px grid snapping for O & Eye.</div>
       </aside>
@@ -99,6 +102,7 @@
   const incRefEl = document.getElementById('incRef');
   const hitPointEl = document.getElementById('hitPoint');
   const oiDistEl = document.getElementById('oiDist');
+  const fillBlankEl = document.getElementById('fillBlank');
   const resetBtn = document.getElementById('resetBtn');
   const snapBtn = document.getElementById('snapBtn');
   const showNormals = document.getElementById('showNormals');
@@ -155,14 +159,18 @@
   function angleDeg(v){ return Math.atan2(v.y, v.x) * 180/Math.PI; }
   function clamp(v,a,b){return Math.max(a,Math.min(b,v));}
 
+  // robust reflection across a line using normal-based formula:
+  // reflect P across line through A->B
   function reflectPointAcrossLine(P, A, B){
-    const AP = sub(P, A);
+    // A..B defines the mirror line.
     const AB = sub(B, A);
-    const ab2 = dot(AB, AB) || 1;
-    const t = dot(AP, AB) / ab2;
-    const proj = add(A, mul(AB, t));
-    const refl = add(proj, mul(sub(proj, P), 1));
-    return refl;
+    const ABn = norm(AB);
+    // normal pointing to one side of the line
+    const n = perp(ABn);
+    // signed distance from P to line (positive on one side, negative on the other)
+    const signed = dot(sub(P, A), n);
+    // reflect by moving by -2 * signed along the normal
+    return add(P, mul(n, -2 * signed));
   }
 
   // return intersection point and parameters (u along r, v along s)
@@ -188,41 +196,61 @@
     return area2 / base;
   }
 
-  // compute reflection data (same approach: reflect Eye -> Eye' and intersect O->Eye' with mirror line)
+  // compute reflection using reflected Eye method.
   function computeReflection(){
     const A = mirrorA, B = mirrorB;
+    const AB = sub(B, A);
+    const ABn = norm(AB);
+    const normalUnit = perp(ABn);
+
+    // reflect Eye across mirror line to get virtual eye
     const Eref = reflectPointAcrossLine(Eye, A, B);
+
+    // cast ray from O toward Eref and intersect with mirror segment
     const r = sub(Eref, O);
     const s = sub(B, A);
     const inter = lineIntersect(O, r, A, s);
     if (!inter) return null;
-    // require intersection to lie on mirror segment and in front of the object ray
-    if (inter.v < 0 || inter.v > 1) return null; // intersection off the finite mirror
-    if (inter.u < 0) return null; // intersection lies behind the object along ray direction
+
+    // require intersection on finite mirror and forward along ray
+    if (inter.v < 0 || inter.v > 1) return null;
+    if (inter.u < 0) return null;
     const P = inter.pt;
+
     const v_in = sub(P, O);
     const v_out = sub(Eye, P);
-    const mirrorDir = norm(sub(B,A));
-    let normal = perp(mirrorDir);
-    // orient normal so it points against the incident vector
+
+    // pick normal that points against incident vector
+    let normal = normalUnit;
     if (dot(normal, v_in) > 0) normal = mul(normal, -1);
+
+    // compute angles in degrees robustly using acos of clamped dot product between directions
     const inDeg = +( Math.acos( clamp(Math.abs(dot(norm(v_in), norm(normal))), 0, 1) ) * 180/Math.PI ).toFixed(2);
     const outDeg = +( Math.acos( clamp(Math.abs(dot(norm(v_out), norm(normal))), 0, 1) ) * 180/Math.PI ).toFixed(2);
+
+    // virtual image of O (reflected across the mirror line). Ensure using same robust formula:
     const Oimage = reflectPointAcrossLine(O, A, B);
-    const dO = pointToLineDist(O, A, B);
-    return { P, v_in, v_out, normal, inDeg, outDeg, Oimage, dO, Eref };
+
+    // perpendicular distance O to mirror (in px)
+    const dOpx = pointToLineDist(O, A, B);
+
+    return { P, v_in, v_out, normal, inDeg, outDeg, Oimage, dOpx, Eref };
   }
 
-  // drawing
+  // drawing and animation
   let animT = 0, animateEnabled = false;
   animateLight.addEventListener('change', () => { animateEnabled = animateLight.checked; if (!animateEnabled) animT = 0; });
 
-  // Eye image: use external image file image.png and auto-rotate the image so the eye looks toward the hit point (P)
+  // Eye image
   const eyeImg = new Image();
-  eyeImg.src = 'image.png'; // place image.png in the repo or public folder
-  // optional: enable crossOrigin if you host remote image and need to avoid tainting canvas
-  // eyeImg.crossOrigin = 'anonymous';
-  let eyeSize = 50; // rendered pixel size of icon (increased per request)
+  eyeImg.src = 'image.png';
+  let eyeSize = 50;
+
+  // Pixel-to-cm conversion:
+  // Using standard CSS assumptions at 96 DPI: 96 px = 1 in = 2.54 cm => pxPerCm ≈ 37.7952755906
+  // 1 px = pxToCm cm
+  const pxPerCm = 37.7952755906;
+  const pxToCm = 1 / pxPerCm;
 
   function draw(){
     fitCanvas();
@@ -233,7 +261,6 @@
     // mirror (fixed)
     const A = mirrorA, B = mirrorB;
     const dir = norm(sub(B,A));
-    const normal = perp(dir);
     ctx.save();
     ctx.translate((A.x+B.x)/2, (A.y+B.y)/2);
     const angle = Math.atan2(dir.y, dir.x);
@@ -331,7 +358,7 @@
         ctx.fillText(`${res.outDeg}°`, P.x + Math.cos((normalAngle+reflectedAngle)/2)*(arcR+10), P.y + Math.sin((normalAngle+reflectedAngle)/2)*(arcR+10));
       }
 
-      // virtual image and dotted O -> O' line + distance label
+      // virtual image and dotted O -> O' line + distance label (converted to cm)
       if (res.Oimage) {
         // draw virtual image marker
         ctx.fillStyle = 'rgba(16,185,129,0.95)';
@@ -349,23 +376,30 @@
         ctx.stroke();
         ctx.restore();
 
-        // midpoint marker and distance label
+        // midpoint marker and distance label in px and cm
         const midOI = { x: (O.x + res.Oimage.x)/2, y: (O.y + res.Oimage.y)/2 };
-        const distOI = len(sub(res.Oimage, O));
+        const distOIpx = len(sub(res.Oimage, O));
+        const distOIcm = distOIpx * pxToCm;
         ctx.beginPath(); ctx.fillStyle = 'rgba(6,95,70,0.95)'; ctx.arc(midOI.x, midOI.y, 4, 0, Math.PI*2); ctx.fill();
         ctx.font = '12px Inter, Arial'; ctx.fillStyle = '#065f46';
-        ctx.fillText(`${distOI.toFixed(1)} px`, midOI.x + 8, midOI.y - 8);
+        ctx.fillText(`${distOIcm.toFixed(1)} cm`, midOI.x + 8, midOI.y - 8);
+
+        // Update the fill-the-blank question (object distance = image distance)
+        fillBlankEl.textContent = `fill the blank: object distance = image distance = ${distOIcm.toFixed(1)} cm.`;
       }
 
-      // readouts
-      const distOI_read = res.Oimage ? len(sub(res.Oimage, O)) : null;
+      // readouts (perpendicular distance converted to cm; show both perp and O->O' if available)
+      const perpCm = res.dOpx * pxToCm;
+      const distOIpx = res.Oimage ? len(sub(res.Oimage, O)) : null;
+      const distOIcm = distOIpx ? (distOIpx * pxToCm) : null;
       incRefEl.textContent = `${res.inDeg}° / ${res.outDeg}°`;
       hitPointEl.textContent = `${Math.round(P.x)}, ${Math.round(P.y)}`;
-      oiDistEl.textContent = distOI_read ? `${res.dO.toFixed(1)} px (perp) / ${distOI_read.toFixed(1)} px (O→O')` : `${res.dO.toFixed(1)} px (perp)`;
+      oiDistEl.textContent = distOIcm ? `${perpCm.toFixed(1)} cm (perp) / ${distOIcm.toFixed(1)} cm (O→O')` : `${perpCm.toFixed(1)} cm (perp)`;
     } else {
       incRefEl.textContent = '— / —';
       hitPointEl.textContent = '—';
       oiDistEl.textContent = '—';
+      fillBlankEl.textContent = 'fill the blank: object distance = image distance = ___ cm.';
     }
 
     // draw O
@@ -380,7 +414,6 @@
       if (res && res.P) {
         angleTo = Math.atan2(res.P.y - Eye.y, res.P.x - Eye.x);
       } else {
-        // fallback: look toward mirror center
         const mid = { x: (mirrorA.x + mirrorB.x)/2, y: (mirrorA.y + mirrorB.y)/2 };
         angleTo = Math.atan2(mid.y - Eye.y, mid.x - Eye.x);
       }
